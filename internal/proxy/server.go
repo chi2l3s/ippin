@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -15,7 +14,9 @@ import (
 
 	"github.com/chi2l3s/ippin/internal/checker"
 	"github.com/chi2l3s/ippin/internal/config"
+	"github.com/chi2l3s/ippin/internal/sysproxy"
 	"github.com/chi2l3s/ippin/internal/ui"
+	"github.com/chi2l3s/ippin/internal/upstream"
 )
 
 type Server struct {
@@ -23,13 +24,15 @@ type Server struct {
 	checker     *checker.Checker
 	mu          sync.Mutex
 	activeConns map[net.Conn]struct{}
+	keepWinPAC  bool
 }
 
-func NewServer(cfg *config.Config) *Server {
+func NewServer(cfg *config.Config, keepWinPAC bool) *Server {
 	return &Server{
 		cfg:         cfg,
-		checker:     checker.New(cfg.UpstreamProxy, 3*time.Second),
+		checker:     checker.New(cfg.UpstreamProxy, cfg.Port, 3*time.Second),
 		activeConns: make(map[net.Conn]struct{}),
+		keepWinPAC:  keepWinPAC,
 	}
 }
 
@@ -81,19 +84,22 @@ func (s *Server) handlePAC(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/x-ns-proxy-autoconfig")
 	var conds []string
 	for _, d := range s.cfg.Domains {
-		conds = append(conds, fmt.Sprintf(`dnsDomainIs(host, "%s") || shExpMatch(host, "*.%s")`), d, d)
+		item := fmt.Sprintf(`dnsDomainIs(host, "%s") || shExpMatch(host, "*.%s")`, d, d)
+		conds = append(conds, item)
 	}
 	rule := strings.Join(conds, " || ")
 	if rule == "" {
 		rule = "false"
 	}
 
+	fallback := upstream.PACFallback(s.cfg.UpstreamProxy, s.cfg.Port)
+
 	pac := fmt.Sprintf(`function FindProxyForURL(url, host) {
-	if (%s) {
-		return "PROXY 127.0.0.1:%d";
-	}
-	return "DIRECT";
-	}`, rule, s.cfg.Port)
+    if (%s) {
+        return "PROXY 127.0.0.1:%d";
+    }
+    return "%s";
+}`, rule, s.cfg.Port, fallback)
 
 	_, _ = w.Write([]byte(pac))
 }
@@ -110,11 +116,10 @@ func (s *Server) handleAnthropicReverseProxy(w http.ResponseWriter, r *http.Requ
 
 	target, _ := url.Parse("https://api.anthropic.com")
 	proxy := httputil.NewSingleHostReverseProxy(target)
-
-	if s.cfg.UpstreamProxy != "" {
-		if proxyURL, err := url.Parse(s.cfg.UpstreamProxy); err == nil {
-			proxy.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURL)}
-		}
+	proxy.Transport = &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return upstream.Dial(s.cfg.UpstreamProxy, s.cfg.Port, addr, 10*time.Second)
+		},
 	}
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/anthropic")
@@ -132,11 +137,10 @@ func (s *Server) handleHTTPForward(w http.ResponseWriter, r *http.Request) {
 
 	ui.LogPass(r.Host, res.IP, res.Country)
 
-	transport := &http.Transport{}
-	if s.cfg.UpstreamProxy != "" {
-		if proxyURL, err := url.Parse(s.cfg.UpstreamProxy); err == nil {
-			transport.Proxy = http.ProxyURL(proxyURL)
-		}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return upstream.Dial(s.cfg.UpstreamProxy, s.cfg.Port, addr, 10*time.Second)
+		},
 	}
 
 	r.RequestURI = ""
@@ -166,7 +170,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	ui.LogPass(r.Host, res.IP, res.Country)
 
-	targetConn, err := s.dialTarget(r.Host)
+	targetConn, err := upstream.Dial(s.cfg.UpstreamProxy, s.cfg.Port, r.Host, 10*time.Second)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -207,40 +211,6 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-func (s *Server) dialTarget(host string) (net.Conn, error) {
-	if s.cfg.UpstreamProxy == "" {
-		return net.DialTimeout("tcp", host, 10*time.Second)
-	}
-
-	proxyURL, err := url.Parse(s.cfg.UpstreamProxy)
-	if err != nil {
-		return nil, err
-	}
-
-	conn, err := net.DialTimeout("tcp", proxyURL.Host, 10*time.Second)
-	if err != nil {
-		return nil, err
-	}
-
-	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", host, host)
-	if _, err := conn.Write([]byte(req)); err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		conn.Close()
-		return nil, fmt.Errorf("upstream proxy status: %d", resp.StatusCode)
-	}
-
-	return conn, nil
-}
-
 func (s *Server) trackConn(c net.Conn, add bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -259,7 +229,7 @@ func (s *Server) activeCount() int {
 
 func (s *Server) killAllConnections(currentIP string) {
 	s.mu.Lock()
-	count := s.activeCount()
+	count := len(s.activeConns)
 	for c := range s.activeConns {
 		_ = c.Close()
 		delete(s.activeConns, c)
@@ -275,11 +245,16 @@ func (s *Server) watchNetwork(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	ticks := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			ticks++
+			if s.keepWinPAC && ticks%5 == 0 {
+				_ = sysproxy.EnableWindowsPAC(s.cfg.Port)
+			}
 			if s.activeCount() == 0 {
 				continue
 			}

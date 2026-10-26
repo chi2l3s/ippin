@@ -3,10 +3,11 @@ package cmd
 import (
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/chi2l3s/ippin/internal/checker"
 	"github.com/chi2l3s/ippin/internal/config"
 	"github.com/chi2l3s/ippin/internal/ui"
-	"github.com/spf13/cobra"
+	"github.com/chi2l3s/ippin/internal/upstream"
 )
 
 var upstreamFlag string
@@ -26,8 +27,14 @@ var lockCmd = &cobra.Command{
 			cfg.UpstreamProxy = upstreamFlag
 		}
 
-		ui.Info("Detecting current external IP...")
-		chk := checker.New(cfg.UpstreamProxy, time.Second)
+		resolved := upstream.Resolve(cfg.UpstreamProxy, cfg.Port)
+		if resolved != "" {
+			ui.Info("Using detected upstream proxy: %s", ui.Cyan(resolved))
+		} else {
+			ui.Info("Using TUN / Direct network route...")
+		}
+
+		chk := checker.New(cfg.UpstreamProxy, cfg.Port, time.Second)
 		res, err := chk.FetchCurrent(true)
 		if err != nil {
 			ui.Error("Could not detect external IP: %v", err)
@@ -47,6 +54,6 @@ var lockCmd = &cobra.Command{
 }
 
 func init() {
-	lockCmd.Flags().StringVarP(&upstreamFlag, "upstream", "u", "", "Optional upstream proxy URL (e.g. http://127.0.0.1:2080)")
+	lockCmd.Flags().StringVarP(&upstreamFlag, "upstream", "u", "", "Set mode: 'tun', 'auto', or proxy URL (e.g. http://127.0.0.1:2080)")
 	rootCmd.AddCommand(lockCmd)
 }

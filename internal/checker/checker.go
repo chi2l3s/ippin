@@ -3,10 +3,11 @@ package checker
 import (
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chi2l3s/ippin/internal/upstream"
 )
 
 type TraceResult struct {
@@ -20,30 +21,15 @@ type Checker struct {
 	lastCheck     time.Time
 	cacheTTL      time.Duration
 	upstreamProxy string
+	ownPort       int
 }
 
-func New(upstreamProxy string, cacheTTL time.Duration) *Checker {
+func New(upstreamProxy string, ownPort int, cacheTTL time.Duration) *Checker {
 	return &Checker{
 		upstreamProxy: upstreamProxy,
+		ownPort:       ownPort,
 		cacheTTL:      cacheTTL,
 	}
-}
-
-func (c *Checker) buildClient() (*http.Client, error) {
-	transport := &http.Transport{
-		DisableKeepAlives: true,
-	}
-	if c.upstreamProxy != "" {
-		proxyURL, err := url.Parse(c.upstreamProxy)
-		if err != nil {
-			return nil, err
-		}
-		transport.Proxy = http.ProxyURL(proxyURL)
-	}
-	return &http.Client{
-		Transport: transport,
-		Timeout:   4 * time.Second,
-	}, nil
 }
 
 func (c *Checker) FetchCurrent(force bool) (*TraceResult, error) {
@@ -54,10 +40,7 @@ func (c *Checker) FetchCurrent(force bool) (*TraceResult, error) {
 		return c.cached, nil
 	}
 
-	client, err := c.buildClient()
-	if err != nil {
-		return nil, err
-	}
+	client := upstream.HTTPClient(c.upstreamProxy, c.ownPort, 4*time.Second)
 
 	endpoints := []string{
 		"https://1.1.1.1/cdn-cgi/trace",
@@ -71,7 +54,7 @@ func (c *Checker) FetchCurrent(force bool) (*TraceResult, error) {
 			lastErr = err
 			continue
 		}
-		req.Header.Set("User-Agent", "ippin-gatekeeper/1.0")
+		req.Header.Set("User-Agent", "ippin-gatekeeper/1.1")
 
 		resp, err := client.Do(req)
 		if err != nil {

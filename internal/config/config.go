@@ -13,6 +13,7 @@ type Config struct {
 	LockedCountry string   `json:"locked_country"`
 	Port          int      `json:"port"`
 	UpstreamProxy string   `json:"upstream_proxy"`
+	AutoWinPAC    bool     `json:"auto_win_pac"`
 	Domains       []string `json:"domains"`
 }
 
@@ -37,7 +38,7 @@ func DefaultPresets() map[string][]string {
 	}
 }
 
-func configPath() (string, error) {
+func BaseDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -46,7 +47,30 @@ func configPath() (string, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
+	return dir, nil
+}
+
+func configPath() (string, error) {
+	dir, err := BaseDir()
+	if err != nil {
+		return "", err
+	}
 	return filepath.Join(dir, "config.json"), nil
+}
+
+func LogPath() string {
+	dir, _ := BaseDir()
+	return filepath.Join(dir, "ippin.log")
+}
+
+func PidPath() string {
+	dir, _ := BaseDir()
+	return filepath.Join(dir, "ippin.pid")
+}
+
+func VbsPath() string {
+	dir, _ := BaseDir()
+	return filepath.Join(dir, "autostart.vbs")
 }
 
 func Load() (*Config, error) {
@@ -57,8 +81,10 @@ func Load() (*Config, error) {
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		cfg := &Config{
-			Port:    8888,
-			Domains: DefaultPresets()["claude"],
+			Port:          8888,
+			UpstreamProxy: "auto",
+			AutoWinPAC:    true,
+			Domains:       DefaultPresets()["claude"],
 		}
 		_ = cfg.Save()
 		return cfg, nil
@@ -75,6 +101,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Port == 0 {
 		cfg.Port = 8888
+	}
+	if cfg.UpstreamProxy == "" {
+		cfg.UpstreamProxy = "tun"
 	}
 	return &cfg, nil
 }
