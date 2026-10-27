@@ -1,0 +1,45 @@
+[package]
+name = "ippin"
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Local IP-pinned HTTP and CONNECT gatekeeper"
+repository = "https://github.com/chi2l3s/ippin"
+
+[dependencies]
+anyhow = "1"
+anstream = "1"
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+fs2 = "0.4"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+webpki-roots = "1"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinInet", "Win32_System_Threading", "Win32_Security"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+await_holding_lock = "deny"

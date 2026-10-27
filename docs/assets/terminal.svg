@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="570" viewBox="0 0 880 570" role="img" aria-labelledby="title description">
+  <title id="title">IPPin CLI status preview</title>
+  <desc id="description">Example terminal output with a running process, matching demonstration IP 203.0.113.24, HTTP upstream, protected domains and PAC endpoint.</desc>
+  <rect x="1" y="1" width="878" height="568" rx="14" fill="#0d1117" stroke="#30363d"/>
+  <path d="M15 1h850a14 14 0 0 1 14 14v33H1V15A14 14 0 0 1 15 1" fill="#161b22"/>
+  <circle cx="25" cy="25" r="5" fill="#ff6058"/>
+  <circle cx="45" cy="25" r="5" fill="#febc2e"/>
+  <circle cx="65" cy="25" r="5" fill="#28c840"/>
+  <text x="440" y="30" fill="#8b949e" text-anchor="middle" font-family="Consolas, 'Cascadia Code', monospace" font-size="13">ippin status</text>
+  <g font-family="Consolas, 'Cascadia Code', monospace" font-size="15" fill="#c9d1d9">
+    <text x="32" y="88"><tspan fill="#79c0ff" font-weight="bold">IPPin</tspan><tspan fill="#8b949e">  v2.0.0</tspan><tspan>  /  Status</tspan></text>
+    <path d="M32 105h816" stroke="#30363d"/>
+    <text x="32" y="140" fill="#8b949e" font-size="12" letter-spacing="1.2">PROCESS</text>
+    <text x="32" y="170" fill="#8b949e">Process</text><text x="224" y="170"><tspan fill="#56d364">● RUNNING</tspan><tspan>  PID 12408, port 8888</tspan></text>
+    <text x="32" y="198" fill="#8b949e">Active route</text><text x="224" y="198">http://127.0.0.1:2080</text>
+    <text x="32" y="240" fill="#8b949e" font-size="12" letter-spacing="1.2">NETWORK</text>
+    <text x="32" y="270" fill="#8b949e">Configured mode</text><text x="224" y="270">http://127.0.0.1:2080</text>
+    <text x="32" y="298" fill="#8b949e">Pinned IP</text><text x="224" y="298">203.0.113.24</text>
+    <text x="32" y="326" fill="#8b949e">Current IP</text><text x="224" y="326">203.0.113.24 (NL)</text>
+    <text x="32" y="354" fill="#8b949e">IP check</text><text x="224" y="354" fill="#56d364">● MATCH</text>
+    <text x="32" y="396" fill="#8b949e" font-size="12" letter-spacing="1.2">ROUTING</text>
+    <text x="32" y="426" fill="#8b949e">Protected domains</text><text x="224" y="426">claude.ai, anthropic.com, claude.com</text>
+    <text x="32" y="454" fill="#8b949e">Local gate</text><text x="224" y="454">http://127.0.0.1:8888</text>
+    <text x="32" y="482" fill="#8b949e">PAC</text><text x="224" y="482">http://127.0.0.1:8888/proxy.pac</text>
+    <text x="32" y="534" fill="#8b949e">❯</text><rect x="53" y="521" width="8" height="16" fill="#79c0ff"/>
+  </g>
+</svg>
